@@ -1,0 +1,6 @@
+[package]
+name = "spring"
+version = "0.1.0"
+authors = ["Yuta Taniguchi <yuta.taniguchi.y.t@gmail.com>"]
+
+[dependencies]
