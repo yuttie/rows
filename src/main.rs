@@ -2,13 +2,22 @@
 extern crate mysql;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_json;
 extern crate serde;
 extern crate toml;
+extern crate base64;
+extern crate chrono;
 
 
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
+use std::str;
+use std::collections::HashMap;
+use std::convert::From;
+use serde_json as json;
+use chrono::prelude::*;
+use chrono::Duration;
 
 
 #[derive(Deserialize)]
@@ -26,6 +35,35 @@ fn read_config<P: AsRef<Path>>(path: P) -> Result<Config, String> {
     toml::from_str(&buf).map_err(|e| e.to_string())
 }
 
+fn to_json_value(val: &mysql::Value) -> json::Value {
+    match val {
+        &mysql::Value::NULL => json::Value::Null,
+        &mysql::Value::Bytes(ref bytes) => {
+            match str::from_utf8(bytes) {
+                Ok(s) => json::Value::String(s.to_owned()),
+                Err(_) => json::Value::String(base64::encode(bytes)),
+            }
+        },
+        &mysql::Value::Int(num) => json::Value::Number(json::Number::from(num)),
+        &mysql::Value::UInt(num) => json::Value::Number(json::Number::from(num)),
+        &mysql::Value::Float(num) => json::Value::Number(json::Number::from_f64(num).unwrap()),
+        &mysql::Value::Date(year, month, day, hour, min, sec, usec) => {
+            json::Value::String(Utc.ymd(year as i32, month as u32, day as u32)
+                                   .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339())
+        },
+        &mysql::Value::Time(is_neg, days, hours, minutes, seconds, microseconds) => {
+            // TODO
+            let duration = Duration::days(days as i64)
+                         + Duration::hours(hours as i64)
+                         + Duration::minutes(minutes as i64)
+                         + Duration::seconds(seconds as i64)
+                         + Duration::microseconds(microseconds as i64);
+            let duration = if is_neg { -duration } else { duration };
+            json::Value::String(format!("{}", duration))
+        },
+    }
+}
+
 fn main() {
     let config = read_config("config.toml").unwrap();
 
@@ -38,15 +76,22 @@ fn main() {
 
     let pool = mysql::Pool::new(builder).unwrap();
 
-    let mut last_id = {
-        let row = pool.first_exec(r#"SELECT max(id) FROM test_db.table;"#, ()).unwrap();
-        mysql::from_row::<u32>(row.unwrap())
+    let mut last_id: u32 = {
+        let row = pool.first_exec(r#"SELECT max(id) AS max_id FROM test_db.table;"#, ()).unwrap().unwrap();
+        row.get("max_id").unwrap()
     };
-    let mut stmt = pool.prepare(r#"SELECT id FROM test_db.table WHERE id > ? ORDER BY id;"#).unwrap();
+    let mut stmt = pool.prepare(r#"SELECT * FROM test_db.table WHERE id > ? ORDER BY id;"#).unwrap();
     loop {
-        for row in stmt.execute((last_id, )).unwrap() {
-            let id = mysql::from_row::<u32>(row.unwrap());
-            println!("{}", id);
+        let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
+        let column_indexes = result.column_indexes();
+        for row in result {
+            let row: mysql::Row = row.unwrap();
+            let row_obj: HashMap<String, json::Value> = column_indexes.iter().map(|(k, &v)| {
+                (k.to_owned(), to_json_value(&row[v]))
+            }).collect();
+            println!("{}", json::to_string(&row_obj).unwrap());
+
+            let id: u32 = row.get("id").unwrap();
             if id > last_id {
                 last_id = id;
             }
