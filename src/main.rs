@@ -14,7 +14,6 @@ use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use std::str;
-use std::collections::HashMap;
 use std::convert::From;
 use serde_json as json;
 use chrono::prelude::*;
@@ -101,11 +100,11 @@ fn main() {
     };
     loop {
         let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
-        let column_indexes = result.column_indexes();
+        let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
         for row in result {
             let row: mysql::Row = row.unwrap();
-            let row_obj: HashMap<String, json::Value> = column_indexes.iter().map(|(k, &v)| {
-                (k.to_owned(), to_json_value(&row[v]))
+            let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
+                (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
             }).collect();
             println!("{}", json::to_string(&row_obj).unwrap());
 
