@@ -66,7 +66,7 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
 }
 
 fn main() {
-    let args = App::new("spring")
+    let args = App::new("bottle")
         .arg(Arg::with_name("TABLE")
              .required(true)
              .index(1))
