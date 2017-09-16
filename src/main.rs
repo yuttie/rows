@@ -13,6 +13,7 @@ use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use std::str;
+use std::io::{self, Write};
 use std::convert::From;
 use serde_json as json;
 use chrono::prelude::*;
@@ -88,6 +89,9 @@ fn main() {
     let table = args.value_of("TABLE").unwrap();
     let column = args.value_of("COLUMN").unwrap();
 
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
     let mut last_id: u32 = {
         let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
         let row = pool.first_exec(sql, ()).unwrap().unwrap();
@@ -105,7 +109,8 @@ fn main() {
             let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
                 (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
             }).collect();
-            println!("{}", json::to_string(&row_obj).unwrap());
+            json::to_writer(&mut stdout, &row_obj).unwrap();
+            stdout.write(&[b'\n']).unwrap();
 
             let id: u32 = row.get(column).unwrap();
             if id > last_id {
