@@ -69,6 +69,12 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bottle")]
 enum Opt {
+    #[structopt(name = "query")]
+    Query {
+        /// Table to read
+        #[structopt(short = "e", name = "SQL")]
+        opt_sql: Option<String>,
+    },
     #[structopt(name = "tail")]
     Tail {
         /// Table to read
@@ -99,6 +105,29 @@ fn main() {
     let mut stdout = stdout.lock();
 
     match opt {
+        Opt::Query { opt_sql } => {
+            let sql = match opt_sql {
+                Some(sql) => {
+                    sql
+                },
+                None => {
+                    let mut buf = String::new();
+                    io::stdin().read_to_string(&mut buf).unwrap();
+                    buf
+                },
+            };
+            let mut stmt = pool.prepare(sql).unwrap();
+            let result: mysql::QueryResult = stmt.execute(()).unwrap();
+            let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
+            for row in result {
+                let row: mysql::Row = row.unwrap();
+                let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
+                    (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                }).collect();
+                json::to_writer(&mut stdout, &row_obj).unwrap();
+                stdout.write(&[b'\n']).unwrap();
+            }
+        },
         Opt::Tail { table, column } => {
             let mut last_id: u32 = {
                 let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
