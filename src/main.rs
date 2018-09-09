@@ -6,7 +6,8 @@ extern crate serde;
 extern crate toml;
 extern crate base64;
 extern crate chrono;
-extern crate clap;
+#[macro_use]
+extern crate structopt;
 
 
 use std::fs::File;
@@ -18,7 +19,7 @@ use std::convert::From;
 use serde_json as json;
 use chrono::prelude::*;
 use chrono::Duration;
-use clap::{Arg, App};
+use structopt::StructOpt;
 
 
 #[derive(Deserialize)]
@@ -65,15 +66,20 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
     }
 }
 
+#[derive(StructOpt, Debug)]
+#[structopt(name = "bottle")]
+struct Opt {
+    /// Table to read
+    #[structopt(name = "TABLE")]
+    table: String,
+
+    /// Column of primary key
+    #[structopt(name = "COLUMN")]
+    column: String,
+}
+
 fn main() {
-    let args = App::new("bottle")
-        .arg(Arg::with_name("TABLE")
-             .required(true)
-             .index(1))
-        .arg(Arg::with_name("COLUMN")
-             .required(true)
-             .index(2))
-        .get_matches();
+    let opt = Opt::from_args();
 
     let config = read_config("config.toml").unwrap();
 
@@ -86,19 +92,16 @@ fn main() {
 
     let pool = mysql::Pool::new(builder).unwrap();
 
-    let table = args.value_of("TABLE").unwrap();
-    let column = args.value_of("COLUMN").unwrap();
-
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
     let mut last_id: u32 = {
-        let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
+        let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=opt.table, column=opt.column);
         let row = pool.first_exec(sql, ()).unwrap().unwrap();
         row.get("max_id").unwrap()
     };
     let mut stmt = {
-        let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=table, column=column);
+        let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=opt.table, column=opt.column);
         pool.prepare(sql).unwrap()
     };
     loop {
@@ -112,7 +115,7 @@ fn main() {
             json::to_writer(&mut stdout, &row_obj).unwrap();
             stdout.write(&[b'\n']).unwrap();
 
-            let id: u32 = row.get(column).unwrap();
+            let id: u32 = row.get(opt.column.as_str()).unwrap();
             if id > last_id {
                 last_id = id;
             }
