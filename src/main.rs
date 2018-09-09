@@ -68,14 +68,17 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bottle")]
-struct Opt {
-    /// Table to read
-    #[structopt(name = "TABLE")]
-    table: String,
+enum Opt {
+    #[structopt(name = "tail")]
+    Tail {
+        /// Table to read
+        #[structopt(name = "TABLE")]
+        table: String,
 
-    /// Column of primary key
-    #[structopt(name = "COLUMN")]
-    column: String,
+        /// Column of primary key
+        #[structopt(name = "COLUMN")]
+        column: String,
+    },
 }
 
 fn main() {
@@ -95,29 +98,33 @@ fn main() {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
-    let mut last_id: u32 = {
-        let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=opt.table, column=opt.column);
-        let row = pool.first_exec(sql, ()).unwrap().unwrap();
-        row.get("max_id").unwrap()
-    };
-    let mut stmt = {
-        let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=opt.table, column=opt.column);
-        pool.prepare(sql).unwrap()
-    };
-    loop {
-        let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
-        let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
-        for row in result {
-            let row: mysql::Row = row.unwrap();
-            let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
-                (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
-            }).collect();
-            json::to_writer(&mut stdout, &row_obj).unwrap();
-            stdout.write(&[b'\n']).unwrap();
+    match opt {
+        Opt::Tail { table, column } => {
+            let mut last_id: u32 = {
+                let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
+                let row = pool.first_exec(sql, ()).unwrap().unwrap();
+                row.get("max_id").unwrap()
+            };
+            let mut stmt = {
+                let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=table, column=column);
+                pool.prepare(sql).unwrap()
+            };
+            loop {
+                let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
+                let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
+                for row in result {
+                    let row: mysql::Row = row.unwrap();
+                    let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
+                        (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                    }).collect();
+                    json::to_writer(&mut stdout, &row_obj).unwrap();
+                    stdout.write(&[b'\n']).unwrap();
 
-            let id: u32 = row.get(opt.column.as_str()).unwrap();
-            if id > last_id {
-                last_id = id;
+                    let id: u32 = row.get(column.as_str()).unwrap();
+                    if id > last_id {
+                        last_id = id;
+                    }
+                }
             }
         }
     }
