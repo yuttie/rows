@@ -68,7 +68,13 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bottle")]
-enum Opt {
+struct Opt {
+    #[structopt(subcommand)]
+    cmd: Command,
+}
+
+#[derive(StructOpt, Debug)]
+enum Command {
     #[structopt(name = "query")]
     Query {
         /// Table to read
@@ -104,8 +110,8 @@ fn main() {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
-    match opt {
-        Opt::Query { opt_sql } => {
+    match opt.cmd {
+        Command::Query { opt_sql } => {
             let sql = match opt_sql {
                 Some(sql) => {
                     sql
@@ -128,7 +134,7 @@ fn main() {
                 stdout.write(&[b'\n']).unwrap();
             }
         },
-        Opt::Tail { table, column } => {
+        Command::Tail { table, column } => {
             let mut last_id: u32 = {
                 let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
                 let row = pool.first_exec(sql, ()).unwrap().unwrap();
