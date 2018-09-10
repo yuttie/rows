@@ -10,6 +10,7 @@ extern crate chrono;
 extern crate clap;
 #[macro_use]
 extern crate structopt;
+extern crate csv;
 
 
 use std::fs::File;
@@ -68,9 +69,39 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
     }
 }
 
+fn to_csv_value(val: &mysql::Value) -> String {
+    match val {
+        &mysql::Value::NULL => String::new(),
+        &mysql::Value::Bytes(ref bytes) => {
+            match str::from_utf8(bytes) {
+                Ok(s) => s.to_owned(),
+                Err(_) => base64::encode(bytes),
+            }
+        },
+        &mysql::Value::Int(num) => num.to_string(),
+        &mysql::Value::UInt(num) => num.to_string(),
+        &mysql::Value::Float(num) => num.to_string(),
+        &mysql::Value::Date(year, month, day, hour, min, sec, usec) => {
+            Utc.ymd(year as i32, month as u32, day as u32)
+               .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339()
+        },
+        &mysql::Value::Time(is_neg, days, hours, minutes, seconds, microseconds) => {
+            // TODO
+            let duration = Duration::days(days as i64)
+                         + Duration::hours(hours as i64)
+                         + Duration::minutes(minutes as i64)
+                         + Duration::seconds(seconds as i64)
+                         + Duration::microseconds(microseconds as i64);
+            let duration = if is_neg { -duration } else { duration };
+            format!("{}", duration)
+        },
+    }
+}
+
 arg_enum! {
     #[derive(PartialEq, Debug)]
     enum Format {
+        Csv,
         Json,
     }
 }
@@ -137,13 +168,30 @@ fn main() {
             let mut stmt = pool.prepare(sql).unwrap();
             let result: mysql::QueryResult = stmt.execute(()).unwrap();
             let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
-            for row in result {
-                let row: mysql::Row = row.unwrap();
-                let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
-                    (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
-                }).collect();
-                json::to_writer(&mut stdout, &row_obj).unwrap();
-                stdout.write(&[b'\n']).unwrap();
+            match opt.format {
+                Format::Csv => {
+                    let mut wtr = csv::WriterBuilder::new()
+                        .from_writer(stdout);
+                    wtr.write_record(&column_names).unwrap();
+                    for row in result {
+                        let row: mysql::Row = row.unwrap();
+                        let values: Vec<String> = column_names.iter().map(|col_name| {
+                            to_csv_value(&row[col_name.as_str()])
+                        }).collect();
+                        wtr.write_record(values).unwrap();
+                    }
+                    wtr.flush().unwrap();
+                },
+                Format::Json => {
+                    for row in result {
+                        let row: mysql::Row = row.unwrap();
+                        let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
+                            (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                        }).collect();
+                        json::to_writer(&mut stdout, &row_obj).unwrap();
+                        stdout.write(&[b'\n']).unwrap();
+                    }
+                },
             }
         },
         Command::Tail { table, column } => {
@@ -156,22 +204,65 @@ fn main() {
                 let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=table, column=column);
                 pool.prepare(sql).unwrap()
             };
-            loop {
-                let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
-                let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
-                for row in result {
-                    let row: mysql::Row = row.unwrap();
-                    let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
-                        (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
-                    }).collect();
-                    json::to_writer(&mut stdout, &row_obj).unwrap();
-                    stdout.write(&[b'\n']).unwrap();
+            match opt.format {
+                Format::Csv => {
+                    let mut wtr = csv::WriterBuilder::new()
+                        .from_writer(stdout);
+                    let column_names: Vec<String> = {
+                        let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
+                        let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
+                        wtr.write_record(&column_names).unwrap();
+                        for row in result {
+                            let row: mysql::Row = row.unwrap();
+                            let values: Vec<String> = column_names.iter().map(|col_name| {
+                                to_csv_value(&row[col_name.as_str()])
+                            }).collect();
+                            wtr.write_record(values).unwrap();
 
-                    let id: u32 = row.get(column.as_str()).unwrap();
-                    if id > last_id {
-                        last_id = id;
+                            let id: u32 = row.get(column.as_str()).unwrap();
+                            if id > last_id {
+                                last_id = id;
+                            }
+                        }
+                        wtr.flush().unwrap();
+                        column_names
+                    };
+                    loop {
+                        let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
+                        for row in result {
+                            let row: mysql::Row = row.unwrap();
+                            let values: Vec<String> = column_names.iter().map(|col_name| {
+                                to_csv_value(&row[col_name.as_str()])
+                            }).collect();
+                            wtr.write_record(values).unwrap();
+
+                            let id: u32 = row.get(column.as_str()).unwrap();
+                            if id > last_id {
+                                last_id = id;
+                            }
+                        }
+                        wtr.flush().unwrap();
                     }
-                }
+                },
+                Format::Json => {
+                    loop {
+                        let result: mysql::QueryResult = stmt.execute((last_id, )).unwrap();
+                        let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
+                        for row in result {
+                            let row: mysql::Row = row.unwrap();
+                            let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
+                                (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                            }).collect();
+                            json::to_writer(&mut stdout, &row_obj).unwrap();
+                            stdout.write(&[b'\n']).unwrap();
+
+                            let id: u32 = row.get(column.as_str()).unwrap();
+                            if id > last_id {
+                                last_id = id;
+                            }
+                        }
+                    }
+                },
             }
         }
     }
