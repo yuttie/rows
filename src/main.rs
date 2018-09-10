@@ -7,6 +7,8 @@ extern crate toml;
 extern crate base64;
 extern crate chrono;
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate structopt;
 
 
@@ -66,9 +68,19 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
     }
 }
 
+arg_enum! {
+    #[derive(PartialEq, Debug)]
+    enum Format {
+        Json,
+    }
+}
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bottle")]
 struct Opt {
+    #[structopt(long = "format", default_value = "json", raw(possible_values = "&Format::variants()", case_insensitive = "true"))]
+    format: Format,
+
     #[structopt(subcommand)]
     cmd: Command,
 }
