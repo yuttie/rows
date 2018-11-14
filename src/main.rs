@@ -13,6 +13,7 @@ extern crate structopt;
 extern crate csv;
 
 
+use std::fmt::Display;
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
@@ -40,7 +41,7 @@ fn read_config<P: AsRef<Path>>(path: P) -> Result<Config, String> {
     toml::from_str(&buf).map_err(|e| e.to_string())
 }
 
-fn to_json_value(val: &mysql::Value) -> json::Value {
+fn to_json_value<T>(val: &mysql::Value, tz: Option<T>) -> json::Value where T: TimeZone, T::Offset: Display {
     match val {
         &mysql::Value::NULL => json::Value::Null,
         &mysql::Value::Bytes(ref bytes) => {
@@ -53,8 +54,9 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
         &mysql::Value::UInt(num) => json::Value::Number(json::Number::from(num)),
         &mysql::Value::Float(num) => json::Value::Number(json::Number::from_f64(num).unwrap()),
         &mysql::Value::Date(year, month, day, hour, min, sec, usec) => {
-            json::Value::String(Utc.ymd(year as i32, month as u32, day as u32)
-                                   .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339())
+            json::Value::String(tz.expect("DATETIME-like column requires a timezone offset specified with --timezone")
+                                  .ymd(year as i32, month as u32, day as u32)
+                                  .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339())
         },
         &mysql::Value::Time(is_neg, days, hours, minutes, seconds, microseconds) => {
             // TODO
@@ -69,7 +71,7 @@ fn to_json_value(val: &mysql::Value) -> json::Value {
     }
 }
 
-fn to_csv_value(val: &mysql::Value) -> String {
+fn to_csv_value<T>(val: &mysql::Value, tz: Option<T>) -> String where T: TimeZone, T::Offset: Display {
     match val {
         &mysql::Value::NULL => String::new(),
         &mysql::Value::Bytes(ref bytes) => {
@@ -82,8 +84,9 @@ fn to_csv_value(val: &mysql::Value) -> String {
         &mysql::Value::UInt(num) => num.to_string(),
         &mysql::Value::Float(num) => num.to_string(),
         &mysql::Value::Date(year, month, day, hour, min, sec, usec) => {
-            Utc.ymd(year as i32, month as u32, day as u32)
-               .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339()
+            tz.expect("DATETIME-like column requires a timezone offset specified with --timezone")
+              .ymd(year as i32, month as u32, day as u32)
+              .and_hms_micro(hour as u32, min as u32, sec as u32, usec as u32).to_rfc3339()
         },
         &mysql::Value::Time(is_neg, days, hours, minutes, seconds, microseconds) => {
             // TODO
@@ -111,6 +114,10 @@ arg_enum! {
 struct Opt {
     #[structopt(long = "format", default_value = "json", raw(possible_values = "&Format::variants()", case_insensitive = "true"))]
     format: Format,
+
+    /// Timezone in which DATETIME-like values are interpreted (in seconds)
+    #[structopt(long = "time-zone", name = "offset")]
+    tz_offset: Option<i32>,
 
     #[structopt(subcommand)]
     cmd: Command,
@@ -153,6 +160,8 @@ fn main() {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
+    let tz: Option<FixedOffset> = opt.tz_offset.map(FixedOffset::east);
+
     match opt.cmd {
         Command::Query { opt_sql } => {
             let sql = match opt_sql {
@@ -176,7 +185,7 @@ fn main() {
                     for row in result {
                         let row: mysql::Row = row.unwrap();
                         let values: Vec<String> = column_names.iter().map(|col_name| {
-                            to_csv_value(&row[col_name.as_str()])
+                            to_csv_value(&row[col_name.as_str()], tz)
                         }).collect();
                         wtr.write_record(values).unwrap();
                     }
@@ -186,7 +195,7 @@ fn main() {
                     for row in result {
                         let row: mysql::Row = row.unwrap();
                         let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
-                            (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                            (col_name.to_owned(), to_json_value(&row[col_name.as_str()], tz))
                         }).collect();
                         json::to_writer(&mut stdout, &row_obj).unwrap();
                         stdout.write(&[b'\n']).unwrap();
@@ -215,7 +224,7 @@ fn main() {
                         for row in result {
                             let row: mysql::Row = row.unwrap();
                             let values: Vec<String> = column_names.iter().map(|col_name| {
-                                to_csv_value(&row[col_name.as_str()])
+                                to_csv_value(&row[col_name.as_str()], tz)
                             }).collect();
                             wtr.write_record(values).unwrap();
 
@@ -232,7 +241,7 @@ fn main() {
                         for row in result {
                             let row: mysql::Row = row.unwrap();
                             let values: Vec<String> = column_names.iter().map(|col_name| {
-                                to_csv_value(&row[col_name.as_str()])
+                                to_csv_value(&row[col_name.as_str()], tz)
                             }).collect();
                             wtr.write_record(values).unwrap();
 
@@ -251,7 +260,7 @@ fn main() {
                         for row in result {
                             let row: mysql::Row = row.unwrap();
                             let row_obj: json::Map<String, json::Value> = column_names.iter().map(|col_name| {
-                                (col_name.to_owned(), to_json_value(&row[col_name.as_str()]))
+                                (col_name.to_owned(), to_json_value(&row[col_name.as_str()], tz))
                             }).collect();
                             json::to_writer(&mut stdout, &row_obj).unwrap();
                             stdout.write(&[b'\n']).unwrap();
