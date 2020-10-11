@@ -1,21 +1,17 @@
 extern crate mysql;
-#[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 extern crate serde;
-extern crate toml;
 extern crate base64;
 extern crate chrono;
 #[macro_use]
 extern crate clap;
-#[macro_use]
 extern crate structopt;
 extern crate csv;
 
 
+use std::env;
 use std::fmt::Display;
-use std::fs::File;
-use std::path::Path;
 use std::io::Read;
 use std::str;
 use std::io::{self, Write};
@@ -23,23 +19,9 @@ use std::convert::From;
 use serde_json as json;
 use chrono::prelude::*;
 use chrono::Duration;
+use dotenv::dotenv;
 use structopt::StructOpt;
 
-
-#[derive(Deserialize)]
-struct Config {
-    host: Option<String>,
-    port: Option<u16>,
-    user: Option<String>,
-    password: Option<String>,
-}
-
-fn read_config<P: AsRef<Path>>(path: P) -> Result<Config, String> {
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let mut buf = String::new();
-    file.read_to_string(&mut buf).map_err(|e| e.to_string())?;
-    toml::from_str(&buf).map_err(|e| e.to_string())
-}
 
 fn to_json_value<T>(val: &mysql::Value, tz: Option<T>) -> json::Value where T: TimeZone, T::Offset: Display {
     match val {
@@ -146,13 +128,13 @@ enum Command {
 fn main() {
     let opt = Opt::from_args();
 
-    let config = read_config("config.toml").unwrap();
+    dotenv().ok();
 
     let mut builder = mysql::OptsBuilder::new();
-    builder.ip_or_hostname(config.host)
-           .tcp_port(config.port.unwrap_or(3306))
-           .user(config.user)
-           .pass(config.password)
+    builder.ip_or_hostname(env::var("BOTTLE_HOST").ok())
+           .tcp_port(env::var("BOTTLE_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(3306))
+           .user(env::var("BOTTLE_USER").ok())
+           .pass(env::var("BOTTLE_PASSWORD").ok())
            .prefer_socket(false);
 
     let pool = mysql::Pool::new(builder).unwrap();
