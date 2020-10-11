@@ -1,25 +1,16 @@
-extern crate mysql;
-extern crate serde_derive;
-extern crate serde_json;
-extern crate serde;
-extern crate base64;
-extern crate chrono;
-#[macro_use]
-extern crate clap;
-extern crate structopt;
-extern crate csv;
-
-
 use std::env;
 use std::fmt::Display;
 use std::io::Read;
 use std::str;
 use std::io::{self, Write};
 use std::convert::From;
-use serde_json as json;
+
+use clap::arg_enum;
 use chrono::prelude::*;
 use chrono::Duration;
 use dotenv::dotenv;
+use mysql;
+use serde_json as json;
 use structopt::StructOpt;
 
 
