@@ -8,7 +8,7 @@ use std::convert::From;
 use clap::arg_enum;
 use chrono::prelude::*;
 use chrono::Duration;
-use dotenv::dotenv;
+use dotenv;
 use mysql;
 use serde_json as json;
 use structopt::StructOpt;
@@ -85,6 +85,9 @@ arg_enum! {
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bottle")]
 struct Opt {
+    #[structopt(long = "config", name = "config_file")]
+    config_file: Option<String>,
+
     #[structopt(long = "format", default_value = "json", raw(possible_values = "&Format::variants()", case_insensitive = "true"))]
     format: Format,
 
@@ -119,7 +122,12 @@ enum Command {
 fn main() {
     let opt = Opt::from_args();
 
-    dotenv().ok();
+    if let Some(fp) = opt.config_file {
+        dotenv::from_path(fp).unwrap();
+    }
+    else {
+        dotenv::dotenv().ok();
+    }
 
     let mut builder = mysql::OptsBuilder::new();
     builder.ip_or_hostname(env::var("BOTTLE_HOST").ok())
