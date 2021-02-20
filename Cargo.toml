@@ -3,6 +3,8 @@ name = "bottle"
 version = "0.3.2"
 authors = ["Yuta Taniguchi <yuta.taniguchi.y.t@gmail.com>"]
 edition = "2018"
+description = "Stream source of rows."
+license = "MIT"
 
 [dependencies]
 mysql = "14.2.0"
