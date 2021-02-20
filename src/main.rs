@@ -138,7 +138,7 @@ fn main() {
            .db_name(env::var("BOTTLE_DATABASE").ok())
            .prefer_socket(false);
 
-    let pool = mysql::Pool::new(builder).unwrap();
+    let mut conn = mysql::Conn::new(builder).unwrap();
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
@@ -160,7 +160,7 @@ fn main() {
                     let mut wtr = csv::WriterBuilder::new()
                         .from_writer(stdout);
                     for sql in sqls {
-                        let mut stmt = pool.prepare(sql).unwrap();
+                        let mut stmt = conn.prepare(sql).unwrap();
                         let result: mysql::QueryResult = stmt.execute(()).unwrap();
                         let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
                         wtr.write_record(&column_names).unwrap();
@@ -176,7 +176,7 @@ fn main() {
                 },
                 Format::Json => {
                     for sql in sqls {
-                        let mut stmt = pool.prepare(sql).unwrap();
+                        let mut stmt = conn.prepare(sql).unwrap();
                         let result: mysql::QueryResult = stmt.execute(()).unwrap();
                         let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
                         for row in result {
@@ -194,12 +194,12 @@ fn main() {
         Command::Tail { table, column } => {
             let mut last_id: u32 = {
                 let sql = format!(r#"SELECT max({column}) AS max_id FROM {table};"#, table=table, column=column);
-                let row = pool.first_exec(sql, ()).unwrap().unwrap();
+                let row: mysql::Row = conn.first_exec(sql, ()).unwrap().unwrap();
                 row.get("max_id").unwrap()
             };
             let mut stmt = {
                 let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=table, column=column);
-                pool.prepare(sql).unwrap()
+                conn.prepare(sql).unwrap()
             };
             match opt.format {
                 Format::Csv => {
