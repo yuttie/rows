@@ -103,7 +103,7 @@ struct Opt {
 enum Command {
     #[structopt(name = "query")]
     Query {
-        /// Table to read
+        /// Statement to execute
         #[structopt(short = "e", name = "SQL")]
         opt_sql: Option<String>,
     },
