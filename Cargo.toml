@@ -1,5 +1,5 @@
 [package]
-name = "bottle"
+name = "rows"
 version = "0.3.2"
 authors = ["Yuta Taniguchi <yuta.taniguchi.y.t@gmail.com>"]
 edition = "2018"
