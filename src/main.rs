@@ -150,7 +150,7 @@ fn main() {
             let sqls = if sqls.is_empty() {
                 let mut buf = String::new();
                 io::stdin().read_to_string(&mut buf).unwrap();
-                vec![buf]
+                buf.split_terminator(';').map(|s| s.trim().to_owned()).collect::<Vec<_>>()
             }
             else {
                 sqls
