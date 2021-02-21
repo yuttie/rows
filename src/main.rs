@@ -150,11 +150,12 @@ fn main() {
             let sqls = if sqls.is_empty() {
                 let mut buf = String::new();
                 io::stdin().read_to_string(&mut buf).unwrap();
-                buf.split_terminator(';').map(|s| s.trim().to_owned()).collect::<Vec<_>>()
+                buf.split_terminator(';').map(|s| s.to_owned()).collect::<Vec<_>>()
             }
             else {
                 sqls
             };
+            let sqls = sqls.iter().map(|s| s.trim()).filter(|s| !s.is_empty());
             match opt.format {
                 Format::Csv => {
                     let mut wtr = csv::WriterBuilder::new()
