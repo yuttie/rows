@@ -131,11 +131,11 @@ fn main() {
     }
 
     let mut builder = mysql::OptsBuilder::new();
-    builder.ip_or_hostname(env::var("BOTTLE_HOST").ok())
-           .tcp_port(env::var("BOTTLE_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(3306))
-           .user(env::var("BOTTLE_USER").ok())
-           .pass(env::var("BOTTLE_PASSWORD").ok())
-           .db_name(env::var("BOTTLE_DATABASE").ok())
+    builder.ip_or_hostname(env::var("ROWS_HOST").ok())
+           .tcp_port(env::var("ROWS_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(3306))
+           .user(env::var("ROWS_USER").ok())
+           .pass(env::var("ROWS_PASSWORD").ok())
+           .db_name(env::var("ROWS_DATABASE").ok())
            .prefer_socket(false);
 
     let mut conn = mysql::Conn::new(builder).unwrap();
