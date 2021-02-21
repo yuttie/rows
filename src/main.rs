@@ -153,7 +153,7 @@ fn main() {
                 buf.split_terminator(';').map(|s| s.to_owned()).collect::<Vec<_>>()
             }
             else {
-                sqls
+                sqls.iter().map(|s| s.split_terminator(';')).flatten().map(|s| s.to_owned()).collect::<Vec<_>>()
             };
             let sqls = sqls.iter().map(|s| s.trim()).filter(|s| !s.is_empty());
             match opt.format {
