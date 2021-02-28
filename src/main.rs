@@ -164,13 +164,15 @@ fn main() {
                         let mut stmt = conn.prepare(sql).unwrap();
                         let result: mysql::QueryResult = stmt.execute(()).unwrap();
                         let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
-                        wtr.write_record(&column_names).unwrap();
-                        for row in result {
-                            let row: mysql::Row = row.unwrap();
-                            let values: Vec<String> = column_names.iter().map(|col_name| {
-                                to_csv_value(&row[col_name.as_str()], tz)
-                            }).collect();
-                            wtr.write_record(values).unwrap();
+                        if !column_names.is_empty() {
+                            wtr.write_record(&column_names).unwrap();
+                            for row in result {
+                                let row: mysql::Row = row.unwrap();
+                                let values: Vec<String> = column_names.iter().map(|col_name| {
+                                    to_csv_value(&row[col_name.as_str()], tz)
+                                }).collect();
+                                wtr.write_record(values).unwrap();
+                            }
                         }
                         wtr.flush().unwrap();
                     }
