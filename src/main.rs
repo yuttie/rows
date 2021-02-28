@@ -140,9 +140,6 @@ fn main() {
 
     let mut conn = mysql::Conn::new(builder).unwrap();
 
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-
     let tz: Option<FixedOffset> = opt.tz_offset.map(FixedOffset::east);
 
     match opt.cmd {
@@ -158,9 +155,12 @@ fn main() {
             let sqls = sqls.iter().map(|s| s.trim()).filter(|s| !s.is_empty());
             match opt.format {
                 Format::Csv => {
-                    let mut wtr = csv::WriterBuilder::new()
-                        .from_writer(stdout);
                     for sql in sqls {
+                        let stdout = io::stdout();
+                        let stdout = stdout.lock();
+                        let mut wtr = csv::WriterBuilder::new()
+                            .from_writer(stdout);
+
                         let mut stmt = conn.prepare(sql).unwrap();
                         let result: mysql::QueryResult = stmt.execute(()).unwrap();
                         let column_names: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().into_owned()).collect();
@@ -176,6 +176,9 @@ fn main() {
                     }
                 },
                 Format::Json => {
+                    let stdout = io::stdout();
+                    let mut stdout = stdout.lock();
+
                     for sql in sqls {
                         let mut stmt = conn.prepare(sql).unwrap();
                         let result: mysql::QueryResult = stmt.execute(()).unwrap();
@@ -202,6 +205,10 @@ fn main() {
                 let sql = format!(r#"SELECT * FROM {table} WHERE {column} > ? ORDER BY {column};"#, table=table, column=column);
                 conn.prepare(sql).unwrap()
             };
+
+            let stdout = io::stdout();
+            let mut stdout = stdout.lock();
+
             match opt.format {
                 Format::Csv => {
                     let mut wtr = csv::WriterBuilder::new()
