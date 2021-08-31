@@ -84,7 +84,7 @@ arg_enum! {
 }
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "bottle")]
+#[structopt(name = "rows")]
 struct Opt {
     #[structopt(long = "config", name = "config_file")]
     config_file: Option<String>,
